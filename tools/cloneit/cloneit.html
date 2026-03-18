@@ -51,6 +51,33 @@
             <p id="auth-status" class="auth-status auth-status-pending" role="status" aria-live="polite">
               Checking DA authentication…
             </p>
+            <div id="manual-auth-panel" class="manual-auth-card" hidden>
+              <div class="manual-auth-header">
+                <div>
+                  <p class="manual-auth-title">Manual token fallback</p>
+                  <p class="manual-auth-copy">If DA SDK does not supply a bearer token on this page, paste one here. It will be stored in this browser only and used for Clone-It admin API calls.</p>
+                </div>
+              </div>
+              <div class="manual-auth-controls">
+                <label for="manual-token-input" class="input-label">
+                  <span class="label-text">DA bearer token</span>
+                  <span class="label-hint">Paste the raw token value, without the <code>Bearer</code> prefix.</span>
+                </label>
+                <input
+                  type="password"
+                  id="manual-token-input"
+                  class="input-field input-field--mono"
+                  placeholder="Paste DA bearer token"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <div class="manual-auth-actions">
+                  <button id="save-manual-token-btn" class="btn btn-secondary btn-inline" type="button">Save token</button>
+                  <button id="clear-manual-token-btn" class="btn btn-secondary btn-inline" type="button">Clear token</button>
+                </div>
+                <p id="manual-auth-status" class="manual-auth-status"></p>
+              </div>
+            </div>
             <div class="input-group">
               <label for="site-name-input" class="input-label">
                 <span class="label-text">Site name</span>
