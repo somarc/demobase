@@ -201,6 +201,33 @@ body {
   line-height: 1.55;
 }
 
+.auth-status {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  border: 1px solid var(--border);
+}
+
+.auth-status-ready {
+  background: rgb(5 150 105 / 8%);
+  border-color: rgb(5 150 105 / 24%);
+  color: #065f46;
+}
+
+.auth-status-warning {
+  background: rgb(220 38 38 / 7%);
+  border-color: rgb(220 38 38 / 22%);
+  color: #991b1b;
+}
+
+.auth-status-pending {
+  background: rgb(138 138 138 / 8%);
+  border-color: rgb(138 138 138 / 18%);
+  color: var(--text-muted);
+}
+
 .input-group {
   margin-bottom: 1.25rem;
 }

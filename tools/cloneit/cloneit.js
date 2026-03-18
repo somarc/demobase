@@ -42,6 +42,7 @@ const API = {
 
 const app = {
   token: null,
+  authState: 'pending',
 };
 
 const SITE_NAME_MAX_LENGTH = 50;
@@ -96,6 +97,19 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.classList.add('hidden');
   }, 5000);
+}
+
+function setAuthStatus(message, state = 'pending') {
+  const statusEl = document.getElementById('auth-status');
+  if (!statusEl) return;
+
+  statusEl.textContent = message;
+  statusEl.className = `auth-status auth-status-${state}`;
+  app.authState = state;
+}
+
+function getMissingAuthMessage() {
+  return 'No DA bearer token detected. Clone-It loaded, but the DA SDK did not receive auth. Being signed into Sidekick on the site is not enough by itself. Open this tool from a DA-authenticated context or relaunch it after DA hands the page a token.';
 }
 
 function hydrateHeaderState() {
@@ -699,7 +713,7 @@ function setupEventListeners() {
   if (cloneBtn) {
     cloneBtn.addEventListener('click', () => {
       if (!app.token) {
-        showToast('Open from DA for authentication before cloning.', 'error');
+        showToast(getMissingAuthMessage(), 'error');
         return;
       }
       const { valid, value, error } = validateSiteName(siteInput?.value);
@@ -757,11 +771,20 @@ async function init() {
 
   try {
     const { token } = await DA_SDK;
-    app.token = token;
-    showToast('Clone-It is ready. Enter a site name to clone the demo site.', 'success');
+    app.token = token || null;
+    if (app.token) {
+      setAuthStatus('DA bearer token detected. Clone-It can call the admin APIs needed for cloning.', 'ready');
+      showToast('Clone-It is ready. Enter a site name to clone the demo site.', 'success');
+    } else {
+      const message = getMissingAuthMessage();
+      setAuthStatus(message, 'warning');
+      showToast(message, 'error');
+    }
   } catch (error) {
     console.error('Init failed:', error);
-    showToast('Failed to initialize. Open from DA for authentication.', 'error');
+    const message = 'Failed to initialize the DA SDK. Clone-It cannot request a bearer token, so cloning is blocked until the tool is reloaded from a DA-authenticated context.';
+    setAuthStatus(message, 'warning');
+    showToast(message, 'error');
   }
 }
 
