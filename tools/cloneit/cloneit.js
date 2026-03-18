@@ -43,10 +43,12 @@ const API = {
 const app = {
   token: null,
   authState: 'pending',
+  tokenSource: null,
 };
 
 const SITE_NAME_MAX_LENGTH = 50;
 const RESERVED_NAMES = ['admin', 'api', 'config', 'main', 'live', 'preview', 'status', 'job'];
+const MANUAL_TOKEN_STORAGE_KEY = `cloneit.daToken.${ORG}.${BASELINE_SITE}`;
 
 function getQueryParam(name) {
   const url = new URL(window.location.href);
@@ -99,6 +101,32 @@ function showToast(message, type = 'info') {
   }, 5000);
 }
 
+function loadStoredManualToken() {
+  try {
+    return (window.localStorage.getItem(MANUAL_TOKEN_STORAGE_KEY) || '').trim();
+  } catch (error) {
+    console.warn('Could not load stored manual token:', error);
+    return '';
+  }
+}
+
+function storeManualToken(token) {
+  try {
+    if (token) {
+      window.localStorage.setItem(MANUAL_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage.removeItem(MANUAL_TOKEN_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.warn('Could not persist manual token:', error);
+  }
+}
+
+function setAuthToken(token, source = null) {
+  app.token = token || null;
+  app.tokenSource = token ? source : null;
+}
+
 function setAuthStatus(message, state = 'pending') {
   const statusEl = document.getElementById('auth-status');
   if (!statusEl) return;
@@ -110,6 +138,48 @@ function setAuthStatus(message, state = 'pending') {
 
 function getMissingAuthMessage() {
   return 'No DA bearer token detected. Clone-It loaded, but the DA SDK did not receive auth. Being signed into Sidekick on the site is not enough by itself. Open this tool from a DA-authenticated context or relaunch it after DA hands the page a token.';
+}
+
+function getManualTokenReadyMessage() {
+  return 'Using a manually saved DA bearer token from this browser. Clone-It can call the admin APIs needed for cloning, even though the DA SDK did not provide auth on this page.';
+}
+
+function renderManualAuthPanel() {
+  const panel = document.getElementById('manual-auth-panel');
+  const statusEl = document.getElementById('manual-auth-status');
+  const clearButton = document.getElementById('clear-manual-token-btn');
+  if (!panel || !statusEl) return;
+
+  const storedToken = loadStoredManualToken();
+  const shouldShow = !app.token || Boolean(storedToken);
+  panel.hidden = !shouldShow;
+
+  statusEl.classList.remove('is-ready', 'is-warning');
+  if (app.tokenSource === 'da-sdk' && storedToken) {
+    statusEl.textContent = 'DA SDK auth is active. A manual fallback token is also stored in this browser.';
+    statusEl.classList.add('is-ready');
+  } else if (app.tokenSource === 'manual') {
+    statusEl.textContent = 'Manual bearer token is active for Clone-It requests on this page.';
+    statusEl.classList.add('is-ready');
+  } else {
+    statusEl.textContent = 'No manual bearer token stored. Paste one here if DA SDK auth is missing.';
+    statusEl.classList.add('is-warning');
+  }
+
+  if (clearButton) {
+    clearButton.disabled = !storedToken;
+  }
+}
+
+function refreshAuthUi() {
+  if (app.tokenSource === 'da-sdk') {
+    setAuthStatus('DA bearer token detected from the DA SDK. Clone-It can call the admin APIs needed for cloning.', 'ready');
+  } else if (app.tokenSource === 'manual') {
+    setAuthStatus(getManualTokenReadyMessage(), 'ready');
+  } else {
+    setAuthStatus(getMissingAuthMessage(), 'warning');
+  }
+  renderManualAuthPanel();
 }
 
 function hydrateHeaderState() {
@@ -691,6 +761,9 @@ function setupEventListeners() {
   const cloneBtn = document.getElementById('clone-btn');
   const previewEl = document.getElementById('site-preview');
   const helpBtn = document.getElementById('help-btn');
+  const manualTokenInput = document.getElementById('manual-token-input');
+  const saveManualTokenButton = document.getElementById('save-manual-token-btn');
+  const clearManualTokenButton = document.getElementById('clear-manual-token-btn');
   const modal = document.getElementById('help-modal');
   const modalClose = modal?.querySelector('.modal-close');
   const toastClose = document.querySelector('#toast .toast-close');
@@ -710,9 +783,36 @@ function setupEventListeners() {
     });
   }
 
+  if (saveManualTokenButton && manualTokenInput) {
+    saveManualTokenButton.addEventListener('click', () => {
+      const token = manualTokenInput.value.trim();
+      if (!token) {
+        showToast('Paste a DA bearer token first.', 'error');
+        return;
+      }
+      storeManualToken(token);
+      setAuthToken(token, 'manual');
+      manualTokenInput.value = '';
+      refreshAuthUi();
+      showToast('Manual DA bearer token saved for this browser.', 'success');
+    });
+  }
+
+  if (clearManualTokenButton) {
+    clearManualTokenButton.addEventListener('click', () => {
+      storeManualToken('');
+      if (app.tokenSource === 'manual') {
+        setAuthToken(null, null);
+      }
+      refreshAuthUi();
+      showToast('Manual DA bearer token cleared.', 'info');
+    });
+  }
+
   if (cloneBtn) {
     cloneBtn.addEventListener('click', () => {
       if (!app.token) {
+        document.getElementById('manual-token-input')?.focus();
         showToast(getMissingAuthMessage(), 'error');
         return;
       }
@@ -769,22 +869,37 @@ async function init() {
   setupEventListeners();
   hydrateHeaderState();
 
+  const storedToken = loadStoredManualToken();
+  if (storedToken) {
+    setAuthToken(storedToken, 'manual');
+  }
+  refreshAuthUi();
+
   try {
     const { token } = await DA_SDK;
-    app.token = token || null;
-    if (app.token) {
-      setAuthStatus('DA bearer token detected. Clone-It can call the admin APIs needed for cloning.', 'ready');
+    if (token) {
+      setAuthToken(token, 'da-sdk');
+      refreshAuthUi();
       showToast('Clone-It is ready. Enter a site name to clone the demo site.', 'success');
+    } else if (app.tokenSource === 'manual') {
+      refreshAuthUi();
+      showToast('Clone-It loaded without DA SDK auth. Using the manually saved bearer token for this browser.', 'info');
     } else {
       const message = getMissingAuthMessage();
-      setAuthStatus(message, 'warning');
+      refreshAuthUi();
       showToast(message, 'error');
     }
   } catch (error) {
     console.error('Init failed:', error);
-    const message = 'Failed to initialize the DA SDK. Clone-It cannot request a bearer token, so cloning is blocked until the tool is reloaded from a DA-authenticated context.';
-    setAuthStatus(message, 'warning');
-    showToast(message, 'error');
+    if (app.tokenSource === 'manual') {
+      refreshAuthUi();
+      showToast('Clone-It could not initialize DA SDK auth, but the manually saved bearer token is still available for this browser.', 'info');
+    } else {
+      const message = 'Failed to initialize the DA SDK. Clone-It cannot request a bearer token, so cloning is blocked until the tool is reloaded from a DA-authenticated context or given a manual token.';
+      setAuthStatus(message, 'warning');
+      renderManualAuthPanel();
+      showToast(message, 'error');
+    }
   }
 }
 
