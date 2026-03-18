@@ -1,10 +1,32 @@
-const ORG = 'cloudadoption';
-const BASE_SITE = 'diyfire';
+function deriveRuntimeContext() {
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  const hostMatch = window.location.hostname.match(/^[^.]+--([^.]+)--([^.]+)\.aem\.(page|live)$/);
+  const hostSite = hostMatch?.[1] || '';
+  const hostOrg = hostMatch?.[2] || '';
+  const org = params.get('org') || hostOrg || 'cloudadoption';
+  const baseSite = params.get('baseSite') || params.get('base') || hostSite || 'diyfire';
+  const codeOwner = params.get('codeOwner') || org;
+  const codeRepo = params.get('codeRepo') || baseSite;
+
+  return {
+    org,
+    baseSite,
+    codeOwner,
+    codeRepo,
+  };
+}
+
+const RUNTIME_CONTEXT = deriveRuntimeContext();
+const ORG = RUNTIME_CONTEXT.org;
+const BASE_SITE = RUNTIME_CONTEXT.baseSite;
+const CODE_OWNER = RUNTIME_CONTEXT.codeOwner;
+const CODE_REPO = RUNTIME_CONTEXT.codeRepo;
 const DEFAULT_SOURCE_REF = 'main';
 const HOSTED_AEMCODER_URL = 'https://aemcoder.adobe.io/';
 const DEFAULT_LOCAL_CATALYST_URL = 'http://localhost:5173';
 const LOCAL_DEV_HOSTS = new Set(['127.0.0.1', 'localhost']);
-const CATALYST_URL_STORAGE_KEY = 'somarc.remixit.catalyst-url';
+const CATALYST_URL_STORAGE_KEY = 'remixit.catalyst-url';
 const CATALYST_WINDOW_NAME_PREFIX = 'catalyst-remix-launch:';
 const SITE_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -480,28 +502,28 @@ function parseLines(value) {
 
 function derivePreviewUrl(siteName) {
   if (!siteName) {
-    return `https://${DEFAULT_SOURCE_REF}--<site>--cloudadoption.aem.page/`;
+    return `https://${DEFAULT_SOURCE_REF}--<site>--${ORG}.aem.page/`;
   }
   return `https://${DEFAULT_SOURCE_REF}--${siteName}--${ORG}.aem.page/`;
 }
 
 function deriveDaUrl(siteName) {
   if (!siteName) {
-    return 'https://da.live/#/cloudadoption/<site>';
+    return `https://da.live/#/${ORG}/<site>`;
   }
   return `https://da.live/#/${ORG}/${siteName}`;
 }
 
 function deriveLiveUrl(siteName) {
   if (!siteName) {
-    return `https://${DEFAULT_SOURCE_REF}--<site>--cloudadoption.aem.live/`;
+    return `https://${DEFAULT_SOURCE_REF}--<site>--${ORG}.aem.live/`;
   }
   return `https://${DEFAULT_SOURCE_REF}--${siteName}--${ORG}.aem.live/`;
 }
 
 function deriveBranchPreviewUrl(siteName, branchName) {
   if (!siteName || !branchName) {
-    return 'https://<branch>--<site>--cloudadoption.aem.page/';
+    return `https://<branch>--<site>--${ORG}.aem.page/`;
   }
   return `https://${branchName}--${siteName}--${ORG}.aem.page/`;
 }
@@ -644,8 +666,8 @@ function buildPrompt() {
       ['SOURCE_REF', DEFAULT_SOURCE_REF],
       ['TARGET_GIT_BRANCH', targetBranch || '<branch>'],
       ['TARGET_BRANCH_PREVIEW_URL', branchPreviewUrl],
-      ['BACKING_GIT_OWNER', ORG],
-      ['BACKING_GIT_REPO', BASE_SITE],
+      ['BACKING_GIT_OWNER', CODE_OWNER],
+      ['BACKING_GIT_REPO', CODE_REPO],
     ]),
     optional: formatConfigLines([
       ['TARGET_BRAND_NAME', accountLabel],
@@ -656,9 +678,9 @@ function buildPrompt() {
       ['LINK_POLICY', 'all updated internal links must resolve; no 404s'],
       ['STRUCTURE_POLICY', structurePolicy],
       ['EXECUTION_CONTEXT', executionContext],
-      ['SOURCE_OF_TRUTH', `use the discovered structure and content from ${previewUrl} plus the checked-out ${BASE_SITE} workspace on ${targetBranch || '<branch>'}`],
-      ['DELIVERY_MODEL', `repoless site using the shared ${BASE_SITE} codebase`],
-      ['SHARED_CODEBASE', BASE_SITE],
+      ['SOURCE_OF_TRUTH', `use the discovered structure and content from ${previewUrl} plus the checked-out ${CODE_REPO} workspace on ${targetBranch || '<branch>'}`],
+      ['DELIVERY_MODEL', `repoless site using the shared ${CODE_REPO} codebase`],
+      ['SHARED_CODEBASE', CODE_REPO],
       ['BRANCH_POLICY', `create or switch to ${targetBranch || '<branch>'} before any code changes; never leave remix work on ${DEFAULT_SOURCE_REF}`],
       ['PUBLISH_MODE', 'manual follow-up after workspace review unless upload, preview, or publish is actually completed'],
       ['REPORT_MODE', 'return a complete audit summary, change log, asset log, verification summary, and unsupported or escalation notes'],
@@ -693,7 +715,7 @@ function buildPrompt() {
     ...configSections.optional,
     '',
     'Execution contract',
-    `- This is a repoless flow. REPO and CONTENT_SITE refer to the DA/content site slug ${siteName || '<site>'}; BACKING_GIT_REPO refers to the shared code repository ${ORG}/${BASE_SITE}.`,
+    `- This is a repoless flow. REPO and CONTENT_SITE refer to the DA/content site slug ${siteName || '<site>'}; BACKING_GIT_REPO refers to the shared code repository ${CODE_OWNER}/${CODE_REPO}.`,
     `- Start from SOURCE_REF ${DEFAULT_SOURCE_REF} on BACKING_GIT_OWNER/BACKING_GIT_REPO, then create TARGET_GIT_BRANCH ${targetBranch || '<branch>'} if it does not exist and switch to it before making any workspace changes.`,
     `- If TARGET_GIT_BRANCH already exists, switch to it and continue there. Do not leave remix work on ${DEFAULT_SOURCE_REF}.`,
     `- The current content preview is ${previewUrl}. The expected post-remix branch preview target is ${branchPreviewUrl}.`,
@@ -707,7 +729,7 @@ function buildPrompt() {
     'Mission',
     `Retheme the existing DA + EDS demo clone for ${recipeLabel}. Keep the existing authoring model intact, but push the visual identity, story spine, hierarchy, pacing, and industry credibility hard enough that the result feels like a real stakeholder demo rather than a light copy pass.`,
     `Use ${accountLabel === 'auto' ? 'an auto-generated brand name and framing' : `the provided brand/account name ${accountLabel}`}, and make it feel like ${recipe.conceptFrame}.`,
-    `The site/content identity must remain ${siteName || '<site>'} while the code work moves from ${DEFAULT_SOURCE_REF} onto ${targetBranch || '<branch>'} in ${ORG}/${BASE_SITE}.`,
+    `The site/content identity must remain ${siteName || '<site>'} while the code work moves from ${DEFAULT_SOURCE_REF} onto ${targetBranch || '<branch>'} in ${CODE_OWNER}/${CODE_REPO}.`,
     '',
     'Supported run modes',
     '- audit-only: inventory and report only, with no workspace or DA changes.',
@@ -724,7 +746,7 @@ function buildPrompt() {
     '- Do not leave in-scope pages pointing at old-theme destinations just because the old route exists. Replace those links with theme-valid destinations, remove them, or explicitly report the blocker.',
     '- Keep all updated internal links valid according to LINK_POLICY.',
     '- Use only assets allowed by ASSET_POLICY and record the source URL for each new asset in the final report.',
-    '- If CSS, theme, icons, or lightweight JS adjustments are needed, make them in the checked-out diyfire workspace so the target preview reflects the redesign.',
+    `- If CSS, theme, icons, or lightweight JS adjustments are needed, make them in the checked-out ${CODE_REPO} workspace so the target preview reflects the redesign.`,
     '- When a support surface is out of scope or intentionally unchanged, say so explicitly instead of implying it was remixed.',
     '- Do not claim preview, upload, publish, or live success unless it actually happened and was confirmed.',
     '- Preserve structure when uncertain and report the decision instead of inventing a new authoring pattern.',
@@ -739,7 +761,7 @@ function buildPrompt() {
     'Execution workflow',
     '',
     'Phase 0: Workspace targeting',
-    `- Confirm the connected workspace is ${ORG}/${BASE_SITE}.`,
+    `- Confirm the connected workspace is ${CODE_OWNER}/${CODE_REPO}.`,
     `- Report the starting branch, then create TARGET_GIT_BRANCH ${targetBranch || '<branch>'} from SOURCE_REF ${DEFAULT_SOURCE_REF} if needed and switch to it before editing code.`,
     `- Keep the target site identity on ${siteName || '<site>'}; the expected final preview target is ${branchPreviewUrl}.`,
     '',
@@ -874,8 +896,8 @@ function buildCatalystLaunchPayload() {
     targetSite: siteName,
     targetBranch,
     targetBranchPreviewUrl: deriveBranchPreviewUrl(siteName, targetBranch),
-    gitOwner: ORG,
-    gitRepo: BASE_SITE,
+    gitOwner: CODE_OWNER,
+    gitRepo: CODE_REPO,
     sourceRef: DEFAULT_SOURCE_REF,
   };
 }
@@ -926,6 +948,7 @@ function renderContextLinks() {
   const branchPreviewText = document.getElementById('branch-preview-url');
   const daText = document.getElementById('da-url');
   const catalystText = document.getElementById('catalyst-url');
+  const sharedCodebaseText = document.getElementById('shared-codebase-label');
   const canLink = isValidSiteName(siteName);
   const canLinkBranchPreview = canLink && isValidSiteName(branchName);
 
@@ -956,6 +979,9 @@ function renderContextLinks() {
   }
   if (catalystText) {
     catalystText.textContent = catalystBaseUrl || 'Enter a valid Catalyst URL';
+  }
+  if (sharedCodebaseText) {
+    sharedCodebaseText.textContent = CODE_REPO;
   }
 }
 

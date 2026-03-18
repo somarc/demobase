@@ -7,10 +7,30 @@
 
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 
-const ORG = 'cloudadoption';
-const BASELINE_SITE = 'diyfire';
-const CODE_OWNER = 'cloudadoption';
-const CODE_REPO = 'diyfire';
+function deriveRuntimeContext() {
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  const hostMatch = window.location.hostname.match(/^[^.]+--([^.]+)--([^.]+)\.aem\.(page|live)$/);
+  const hostSite = hostMatch?.[1] || '';
+  const hostOrg = hostMatch?.[2] || '';
+  const org = params.get('org') || hostOrg || 'cloudadoption';
+  const baseSite = params.get('baseSite') || params.get('base') || hostSite || 'diyfire';
+  const codeOwner = params.get('codeOwner') || org;
+  const codeRepo = params.get('codeRepo') || baseSite;
+
+  return {
+    org,
+    baseSite,
+    codeOwner,
+    codeRepo,
+  };
+}
+
+const RUNTIME_CONTEXT = deriveRuntimeContext();
+const ORG = RUNTIME_CONTEXT.org;
+const BASELINE_SITE = RUNTIME_CONTEXT.baseSite;
+const CODE_OWNER = RUNTIME_CONTEXT.codeOwner;
+const CODE_REPO = RUNTIME_CONTEXT.codeRepo;
 
 const API = {
   AEM_CONFIG: 'https://admin.hlx.page/config',
@@ -82,6 +102,7 @@ function hydrateHeaderState() {
   const siteInput = document.getElementById('site-name-input');
   const cloneBtn = document.getElementById('clone-btn');
   const previewEl = document.getElementById('site-preview');
+  const codeRepoEls = document.querySelectorAll('[data-code-repo-label]');
   const initialSiteName = validateSiteName(getQueryParam('site')).value || '';
 
   if (siteInput) {
@@ -89,11 +110,14 @@ function hydrateHeaderState() {
     siteInput.focus();
   }
   if (previewEl) {
-    previewEl.textContent = initialSiteName || 'yoursite';
+    previewEl.textContent = `https://main--${initialSiteName || 'yoursite'}--${ORG}.aem.page`;
   }
   if (cloneBtn) {
     cloneBtn.disabled = !initialSiteName;
   }
+  codeRepoEls.forEach((element) => {
+    element.textContent = CODE_REPO;
+  });
 
   renderToolNavigation(initialSiteName);
 }
@@ -660,7 +684,7 @@ function setupEventListeners() {
   if (siteInput) {
     siteInput.addEventListener('input', () => {
       const { value } = validateSiteName(siteInput.value);
-      if (previewEl) previewEl.textContent = value || 'yoursite';
+      if (previewEl) previewEl.textContent = `https://main--${value || 'yoursite'}--${ORG}.aem.page`;
       if (cloneBtn) cloneBtn.disabled = !value;
       renderToolNavigation(value || '');
     });
