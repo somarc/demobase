@@ -258,7 +258,7 @@ function setButtonLoading(loading) {
   if (loadingEl) loadingEl.style.display = loading ? 'inline-flex' : 'none';
 }
 
-function showResult(success, siteName, errorMessage, codeConfig, queryIndexCopied = false, contentPaths = [], daConfigCopied = false) {
+function showResult(success, siteName, errorMessage, codeConfig, queryIndexCopied = false, contentPaths = [], daConfigCopied = false, warnings = []) {
   const container = document.getElementById('result-container');
   const successCard = document.getElementById('result-success');
   const errorCard = document.getElementById('result-error');
@@ -280,6 +280,18 @@ function showResult(success, siteName, errorMessage, codeConfig, queryIndexCopie
         ${queryItem}
         <li>Content: <code>content.da.live/${ORG}/${siteName}/</code></li>
       `;
+    }
+
+    const warningGroup = document.getElementById('result-warning-group');
+    const warningList = document.getElementById('result-warning-list');
+    if (warningGroup && warningList) {
+      if (warnings.length > 0) {
+        warningGroup.style.display = 'block';
+        warningList.innerHTML = warnings.map((warning) => `<li>${warning}</li>`).join('');
+      } else {
+        warningGroup.style.display = 'none';
+        warningList.innerHTML = '';
+      }
     }
 
     const siteUrl = `https://main--${siteName}--${ORG}.aem.page`;
@@ -366,10 +378,17 @@ function handleBulkAction() {
   openBulkAppWithUrls(app.lastClonedSite, app.contentPaths);
 }
 
+function getAemAuthHeaders(token, extraHeaders = {}) {
+  return {
+    'x-auth-token': token,
+    ...extraHeaders,
+  };
+}
+
 async function siteExistsInAem(token, siteName) {
   const url = `${API.AEM_CONFIG}/${ORG}/sites/${siteName}.json`;
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAemAuthHeaders(token),
   });
   return response.ok;
 }
@@ -392,7 +411,7 @@ async function folderExistsInDa(token, siteName) {
 async function fetchBaselineConfig(token) {
   const url = `${API.AEM_CONFIG}/${ORG}/sites/${BASELINE_SITE}.json`;
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAemAuthHeaders(token),
   });
   if (!response.ok) {
     const text = await response.text();
@@ -442,10 +461,9 @@ async function createAemSiteConfig(token, newSiteName, config) {
   const url = `${API.AEM_CONFIG}/${ORG}/sites/${newSiteName}.json`;
   const response = await fetch(url, {
     method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
+    headers: getAemAuthHeaders(token, {
       'Content-Type': 'application/json',
-    },
+    }),
     body: JSON.stringify(config),
   });
   if (!response.ok) {
@@ -463,7 +481,7 @@ async function createAemSiteConfig(token, newSiteName, config) {
 async function fetchBaselineQueryIndex(token) {
   const url = `${API.AEM_CONFIG}/${ORG}/sites/${BASELINE_SITE}/content/query.yaml`;
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAemAuthHeaders(token),
   });
   if (!response.ok) return null;
   return response.text();
@@ -476,10 +494,9 @@ async function fetchBaselineQueryIndex(token) {
  */
 async function createQueryIndex(token, newSiteName, yamlContent) {
   const url = `${API.AEM_CONFIG}/${ORG}/sites/${newSiteName}/content/query.yaml`;
-  const headers = {
-    Authorization: `Bearer ${token}`,
+  const headers = getAemAuthHeaders(token, {
     'Content-Type': 'text/yaml',
-  };
+  });
 
   let response = await fetch(url, { method: 'PUT', headers, body: yamlContent });
   if (response.status === 409) {
@@ -676,6 +693,7 @@ async function cloneSite(siteName) {
   if (filesEl) filesEl.innerHTML = '';
 
   try {
+    const warnings = [];
     setProgress(true, 5, 'Checking if site name is available…', null, 'Checking', '');
     const [aemExists, daExists] = await Promise.all([
       siteExistsInAem(token, siteName),
@@ -707,6 +725,7 @@ async function cloneSite(siteName) {
         daConfigCopied = true;
       } catch (configErr) {
         console.warn('DA config copy skipped:', configErr);
+        warnings.push(`DA repo config was not copied: ${configErr.message}. The cloned site may have an invalid or missing fstab until this config is fixed.`);
       }
     }
 
@@ -739,13 +758,18 @@ async function cloneSite(siteName) {
         queryIndexCopied = true;
       } catch (queryErr) {
         console.warn('Query index copy skipped:', queryErr);
+        warnings.push(`Query index config was not copied: ${queryErr.message}. Query-index-backed surfaces may not work until this is fixed.`);
       }
     }
 
     setProgress(true, 100, 'Done', null, 'Done', '');
     const contentPaths = daPathsToApiPaths(copiedFiles);
-    showResult(true, siteName, null, newConfig.code, queryIndexCopied, contentPaths, daConfigCopied);
-    showToast(`Site ${siteName} created successfully!`, 'success');
+    showResult(true, siteName, null, newConfig.code, queryIndexCopied, contentPaths, daConfigCopied, warnings);
+    if (warnings.length > 0) {
+      showToast(`Site ${siteName} created with warnings. Review the config issues before treating it as production-ready.`, 'error');
+    } else {
+      showToast(`Site ${siteName} created successfully!`, 'success');
+    }
   } catch (error) {
     console.error('Clone failed:', error);
     showResult(false, siteName, error.message);
