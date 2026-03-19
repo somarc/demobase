@@ -37,7 +37,6 @@ const API = {
   DA_SOURCE: 'https://admin.da.live/source',
   DA_COPY: 'https://admin.da.live/copy',
   DA_LIST: 'https://admin.da.live/list',
-  DA_CONFIG: 'https://admin.da.live/config',
 };
 
 const app = {
@@ -272,7 +271,9 @@ function showResult(success, siteName, errorMessage, codeConfig, queryIndexCopie
     const summaryList = document.getElementById('result-summary-list');
     if (summaryList) {
       const queryItem = queryIndexCopied ? '<li>Query index config (query.yaml) copied</li>' : '';
-      const daConfigItem = daConfigCopied ? '<li>DA config copied</li>' : '';
+      const daConfigItem = daConfigCopied
+        ? '<li>DA repo config copied</li>'
+        : '<li>DA repo config skipped for repoless clone safety</li>';
       summaryList.innerHTML = `
         <li>DA content: <code>${ORG}/${BASELINE_SITE}/</code> → <code>${ORG}/${siteName}/</code></li>
         ${daConfigItem}
@@ -516,49 +517,6 @@ function getDefaultIndexHtml(siteName) {
 }
 
 /**
- * Fetch DA config from baseline repo (repo root).
- * @see https://opensource.adobe.com/da-admin/#tag/Config/operation/getConfig
- */
-async function fetchDaConfig(token, org, repo) {
-  const url = `${API.DA_CONFIG}/${org}/${repo}`;
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) return null;
-  return response.text();
-}
-
-/**
- * Rewrite config JSON: replace baseline org/repo with new site (e.g. library paths, app paths).
- */
-function rewriteDaConfigForNewSite(configJson, newSiteName) {
-  const baselineRef = `${ORG}/${BASELINE_SITE}`;
-  const newRef = `${ORG}/${newSiteName}`;
-  return configJson.replace(new RegExp(baselineRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newRef);
-}
-
-/**
- * Create DA config for new repo.
- * Uses form field 'config' (not 'data') per docs.da.live. Path '' for repo root.
- * @see https://docs.da.live/developers/api/config
- */
-async function createDaConfig(token, org, repo, content) {
-  const url = `${API.DA_CONFIG}/${org}/${repo}`;
-  const formData = new FormData();
-  formData.append('config', content);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to create DA config: ${response.status} ${response.statusText} - ${text}`);
-  }
-}
-
-/**
  * List children of a DA folder. Returns array of { path, name, ext, lastModified }.
  * @see https://admin.da.live/list/{org}/{repo}/{path}
  */
@@ -715,19 +673,8 @@ async function cloneSite(siteName) {
     const indexContent = getDefaultIndexHtml(siteName);
     await createDaSource(token, siteName, 'index.html', indexContent);
 
-    setProgress(true, 10, 'Copying DA config…', null, 'Setup', '');
-    let daConfigCopied = false;
-    const daConfigContent = await fetchDaConfig(token, ORG, BASELINE_SITE);
-    if (daConfigContent?.trim()) {
-      try {
-        const rewrittenConfig = rewriteDaConfigForNewSite(daConfigContent, siteName);
-        await createDaConfig(token, ORG, siteName, rewrittenConfig);
-        daConfigCopied = true;
-      } catch (configErr) {
-        console.warn('DA config copy skipped:', configErr);
-        warnings.push(`DA repo config was not copied: ${configErr.message}. The cloned site may have an invalid or missing fstab until this config is fixed.`);
-      }
-    }
+    setProgress(true, 10, 'Skipping DA repo config copy…', null, 'Setup', '');
+    const daConfigCopied = false;
 
     setProgress(true, 15, 'Discovering files…', null, 'Discovering', '');
     let copiedFiles = [];
