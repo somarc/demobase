@@ -7,14 +7,13 @@ Clone the demo site to create a new repoless AEM site with one click.
 CloneIt creates a new repoless site by:
 
 1. **Creating DA folder** – Creates the new site folder in DA with a minimal `index.html`.
-2. **Copying DA config** – Fetches repo-level config from the baseline via [DA Config GET](https://opensource.adobe.com/da-admin/#tag/Config/operation/getConfig) and creates it for the new site via [DA Config POST](https://opensource.adobe.com/da-admin/#tag/Config/operation/createConfig). Skipped if baseline has no config.
-3. **Copying DA content** – Recursively copies all files from `cloudadoption/diyfire` to the new site folder, skipping `drafts` and `demo-docs`. Uses the [DA List API](https://admin.da.live/list) to discover all files, then the [DA Copy API](https://opensource.adobe.com/da-admin/#tag/Copy) per file (the Copy API does not recurse into folders). If copy fails, falls back to updating the minimal `index.html`.
-4. **Creating the AEM site config** – Fetches the baseline diyfire configuration from the [AEM Admin API](https://www.aem.live/docs/admin.html#tag/siteConfig/operation/createSiteSite), copies only code, sidekick, and headers, sets content to the new DA URL, and creates the site via `PUT /config/{org}/sites/{site}.json`
-5. **Copying query index config** – Fetches the baseline `query.yaml` and creates it for the new site. Skipped if the baseline has no index config.
+2. **Copying DA content** – Recursively copies all files from the baseline DA site to the new site folder, skipping `drafts` and `demo-docs`. Uses the [DA List API](https://admin.da.live/list) to discover all files, then the [DA Copy API](https://opensource.adobe.com/da-admin/#tag/Copy) per file (the Copy API does not recurse into folders). If copy fails, falls back to updating the minimal `index.html`.
+3. **Creating the repoless site config** – Creates the minimal documented repoless site config via `PUT /config/{org}/sites/{site}.json`, setting only `code.owner`, `code.repo`, and `content.source.url` with the `x-auth-token` header.
+4. **Copying query index config** – Fetches the baseline `query.yaml` and creates it for the new site. Skipped if the baseline has no index config.
 
-The new site shares the same codebase (diyfire) and uses `https://content.da.live/cloudadoption/{sitename}/` as its content source.
+The new site shares the same codebase and uses `https://content.da.live/{org}/{sitename}/` as its content source.
 
-**Edit in DA:** Open your site in Document Authoring at `https://da.live/edit#/cloudadoption/{sitename}`
+**Edit in DA:** Open your site in Document Authoring at `https://da.live/edit#/{org}/{sitename}`
 
 ## How to Use
 
@@ -24,7 +23,7 @@ The new site shares the same codebase (diyfire) and uses `https://content.da.liv
 2. **Authentication** – The app must be opened from a DA context (e.g. da.live) to obtain the bearer token for API calls
 3. Enter a **site name** (lowercase, numbers and hyphens only, max 50 chars, e.g. `my-new-site`). Reserved names like `admin`, `api`, `config` are blocked.
 4. Click **Clone Site**
-5. Access your new site at `https://main--{sitename}--cloudadoption.aem.page`
+5. Access your new site at `https://main--{sitename}--{org}.aem.page`
 6. **Bulk Preview/Publish** (optional) – After a successful clone, click **Bulk Preview/Publish** to copy all content URLs to your clipboard. A modal guides you to the [DA Bulk app](https://da.live/apps/bulk), where you paste the URLs and run preview or publish as needed.
 
 ---
@@ -60,19 +59,42 @@ All CloneIt files live under the project’s `tools/cloneit/` folder:
 
 | API | Endpoint | Purpose |
 |-----|----------|---------|
-| DA Admin | `GET /config/cloudadoption/diyfire/` | Fetch baseline repo config |
-| DA Admin | `POST /config/cloudadoption/{site}/` | Create config for new site |
-| DA Admin | `GET /list/cloudadoption/diyfire/{path}` | Discover all files recursively |
-| DA Admin | `POST /copy/cloudadoption/diyfire/{path}` | Copy each file to new site folder |
-| DA Admin | `POST /source/cloudadoption/{site}/index.html` | Fallback: create minimal content if copy fails |
-| AEM Admin | `GET /config/cloudadoption/sites/diyfire.json` | Fetch baseline config |
-| AEM Admin | `PUT /config/cloudadoption/sites/{site}.json` | Create repoless site |
-| AEM Admin | `GET /config/cloudadoption/sites/diyfire/content/query.yaml` | Fetch baseline index config |
-| AEM Admin | `PUT /config/cloudadoption/sites/{site}/content/query.yaml` | Create index config for new site |
+| DA Admin | `GET /list/{org}/{baseSite}/{path}` | Discover all files recursively |
+| DA Admin | `POST /copy/{org}/{baseSite}/{path}` | Copy each file to new site folder |
+| DA Admin | `POST /source/{org}/{site}/index.html` | Fallback: create minimal content if copy fails |
+| AEM Admin | `GET /config/{org}/sites/{baseSite}.json` | Fetch baseline config |
+| AEM Admin | `PUT /config/{org}/sites/{site}.json` | Create repoless site |
+| AEM Admin | `GET /config/{org}/sites/{baseSite}/content/query.yaml` | Fetch baseline index config |
+| AEM Admin | `PUT /config/{org}/sites/{site}/content/query.yaml` | Create index config for new site |
 
 ## Authentication
 
-Uses the [DA SDK](https://da.live/nx/utils/sdk.js) to obtain a bearer token. The same token works for both AEM Admin API and DA Admin API when the user is authenticated in the DA context.
+Uses the [DA SDK](https://da.live/nx/utils/sdk.js) to obtain a bearer token. Clone-It calls DA Admin APIs with `Authorization: Bearer {token}` and AEM Admin APIs with `x-auth-token: {token}`. If the DA SDK does not provide a token on the page, the UI supports a manual bearer-token fallback stored only in the browser.
+
+## Troubleshooting
+
+### `Missing configuration` on `https://main--{site}--{org}.aem.page/`
+
+This means the repoless site config was not created successfully on `admin.hlx.page`. The DA content copy may still have completed, so the clone can be partially broken.
+
+### `invalid fstab` in DA preview
+
+For repoless sites, this usually means the site's content-location config is missing or invalid in Config Service. It does **not** mean a literal `fstab.yaml` file must exist in the Git repo.
+
+### Repairing or inspecting site config
+
+Use the repo-level helper script:
+
+```sh
+python3 ../../scripts/repoless-site-config.py show --org somarc --site remixbase
+
+python3 ../../scripts/repoless-site-config.py put \
+  --org somarc \
+  --site remixbase \
+  --baseline-site demobase \
+  --code-repo demobase \
+  --copy-query-index
+```
 
 ## References
 
@@ -80,5 +102,4 @@ Uses the [DA SDK](https://da.live/nx/utils/sdk.js) to obtain a bearer token. The
 - [AEM Admin API – Create Site](https://www.aem.live/docs/admin.html#tag/siteConfig/operation/createSiteSite)
 - [AEM Admin API – Create Index Config](https://www.aem.live/docs/admin.html#tag/indexConfig/operation/createIndexConfig)
 - [DA Admin API – Create Source](https://opensource.adobe.com/da-admin/#tag/Source/operation/createSource)
-- [DA Admin API – Get Config](https://opensource.adobe.com/da-admin/#tag/Config/operation/getConfig)
-- [DA Admin API – Create Config](https://opensource.adobe.com/da-admin/#tag/Config/operation/createConfig)
+- [Config Service Setup](https://www.aem.live/docs/config-service-setup)

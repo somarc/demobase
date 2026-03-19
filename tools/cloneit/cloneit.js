@@ -425,37 +425,18 @@ async function fetchBaselineConfig(token) {
   return JSON.parse(text);
 }
 
-function buildNewSiteConfig(baselineConfig, newSiteName) {
-  const now = new Date().toISOString();
-
-  const config = {
-    version: baselineConfig.version ?? 1,
-    name: newSiteName,
-    created: now,
-    lastModified: now,
+function buildNewSiteConfig(newSiteName) {
+  return {
     content: {
       source: {
-        type: 'markup',
         url: `https://content.da.live/${ORG}/${newSiteName}/`,
       },
     },
-    code: baselineConfig.code
-      ? { ...baselineConfig.code, owner: CODE_OWNER, repo: CODE_REPO }
-      : {
-        owner: CODE_OWNER,
-        repo: CODE_REPO,
-        source: { type: 'github', url: `https://github.com/${CODE_OWNER}/${CODE_REPO}` },
-      },
+    code: {
+      owner: CODE_OWNER,
+      repo: CODE_REPO,
+    },
   };
-
-  if (baselineConfig.sidekick && Object.keys(baselineConfig.sidekick).length > 0) {
-    config.sidekick = { ...baselineConfig.sidekick };
-  }
-  if (baselineConfig.headers && Object.keys(baselineConfig.headers).length > 0) {
-    config.headers = { ...baselineConfig.headers };
-  }
-
-  return config;
 }
 
 async function createAemSiteConfig(token, newSiteName, config) {
@@ -693,7 +674,7 @@ async function cloneSite(siteName) {
     const baselineConfig = await fetchBaselineConfig(token);
 
     setProgress(true, 70, 'Creating site config…', null, 'Configuring', '');
-    const newConfig = buildNewSiteConfig(baselineConfig, siteName);
+    const newConfig = buildNewSiteConfig(siteName);
     await createAemSiteConfig(token, siteName, newConfig);
 
     let queryIndexCopied = false;
